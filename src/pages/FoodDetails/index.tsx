@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useLayoutEffect,
 } from 'react';
-import { Image } from 'react-native';
+import { Image, Alert } from 'react-native';
 
 import Icon from 'react-native-vector-icons/Feather';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
@@ -73,39 +73,114 @@ const FoodDetails: React.FC = () => {
 
   useEffect(() => {
     async function loadFood(): Promise<void> {
-      // Load a specific food with extras based on routeParams id
+      try {
+        const { data } = await api.get<Food>(`/foods/${routeParams.id}`);
+
+        const { price } = data;
+        const formatted = formatValue(price);
+
+        setFood({ ...data, price: Number(price), formattedPrice: formatted });
+        setExtras(data.extras.map(extra => ({ ...extra, quantity: 0 })));
+      } catch (err) {
+        Alert.alert(
+          'Problema de conexão',
+          'Aparentemente não conseguimos pegar o alimento que você selecionou, tente mais tarde!',
+        );
+      }
     }
 
     loadFood();
   }, [routeParams]);
 
-  function handleIncrementExtra(id: number): void {
-    // Increment extra quantity
-  }
+  const handleIncrementExtra = useCallback((id: number): void => {
+    setExtras((prevExtrasState: Extra[]) => {
+      const newExtrasState = prevExtrasState.map<Extra>(
+        ({ quantity, ...extra }) => {
+          if (extra.id === id) {
+            return {
+              quantity: quantity + 1,
+              ...extra,
+            };
+          }
 
-  function handleDecrementExtra(id: number): void {
-    // Decrement extra quantity
-  }
+          return { quantity, ...extra };
+        },
+      );
 
-  function handleIncrementFood(): void {
-    // Increment food quantity
-  }
+      return newExtrasState;
+    });
+  }, []);
 
-  function handleDecrementFood(): void {
-    // Decrement food quantity
-  }
+  const handleDecrementExtra = useCallback((id: number): void => {
+    setExtras((prevExtrasState: Extra[]) => {
+      const newExtrasState = prevExtrasState.map<Extra>(
+        ({ quantity, ...extra }) => {
+          if (extra.id === id && quantity > 0) {
+            return {
+              quantity: quantity - 1,
+              ...extra,
+            };
+          }
+
+          return { quantity, ...extra };
+        },
+      );
+
+      return newExtrasState;
+    });
+  }, []);
+
+  const handleIncrementFood = useCallback((): void => {
+    setFoodQuantity(prevFoodQuantityState => {
+      return prevFoodQuantityState + 1;
+    });
+  }, []);
+
+  const handleDecrementFood = useCallback((): void => {
+    setFoodQuantity(prevFoodQuantityState => {
+      if (prevFoodQuantityState > 1) {
+        return prevFoodQuantityState - 1;
+      }
+
+      return prevFoodQuantityState;
+    });
+  }, []);
 
   const toggleFavorite = useCallback(() => {
-    // Toggle if food is favorite or not
+    setIsFavorite(!isFavorite);
+
+    if (!isFavorite) {
+      api.post('/favorites', food);
+    } else {
+      api.delete(`/favorites/${food.id}`);
+    }
   }, [isFavorite, food]);
 
   const cartTotal = useMemo(() => {
-    // Calculate cartTotal
+    const sumExtras = extras.reduce((prev: number, curr: Extra) => {
+      return prev + curr.quantity * curr.value;
+    }, 0);
+
+    const sumFood = (food.price + sumExtras) * foodQuantity;
+
+    return formatValue(sumFood);
   }, [extras, food, foodQuantity]);
 
-  async function handleFinishOrder(): Promise<void> {
-    // Finish the order and save on the API
-  }
+  const handleFinishOrder = useCallback(async (): Promise<void> => {
+    try {
+      await api.post('/orders', {
+        ...food,
+        extras,
+      });
+    } catch (err) {
+      Alert.alert(
+        'Problema de conexão',
+        'Aparentemente não conseguimos finalizar seu pedido, tente mais tarde!',
+      );
+    }
+
+    navigation.goBack();
+  }, [food, extras, navigation]);
 
   // Calculate the correct icon name
   const favoriteIconName = useMemo(
@@ -201,7 +276,7 @@ const FoodDetails: React.FC = () => {
             </QuantityContainer>
           </PriceButtonContainer>
 
-          <FinishOrderButton onPress={() => handleFinishOrder()}>
+          <FinishOrderButton onPress={handleFinishOrder}>
             <ButtonText>Confirmar pedido</ButtonText>
             <IconContainer>
               <Icon name="check-square" size={24} color="#fff" />

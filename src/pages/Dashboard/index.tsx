@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Image, ScrollView } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Image, ScrollView, Alert } from 'react-native';
 
 import Icon from 'react-native-vector-icons/Feather';
 import { useNavigation } from '@react-navigation/native';
@@ -43,6 +43,10 @@ interface Category {
   image_url: string;
 }
 
+interface QueryParams {
+  [key: string]: number | string;
+}
+
 const Dashboard: React.FC = () => {
   const [foods, setFoods] = useState<Food[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -53,13 +57,43 @@ const Dashboard: React.FC = () => {
 
   const navigation = useNavigation();
 
-  async function handleNavigate(id: number): Promise<void> {
-    // Navigate do ProductDetails page
-  }
+  const handleNavigate = useCallback(
+    async (id: number): Promise<void> => {
+      navigation.navigate('FoodDetails', {
+        id,
+      });
+    },
+    [navigation],
+  );
 
   useEffect(() => {
     async function loadFoods(): Promise<void> {
-      // Load Foods from API
+      try {
+        const queryParams: QueryParams = {};
+        if (selectedCategory) {
+          queryParams.category_like = selectedCategory;
+        }
+
+        if (searchValue) {
+          queryParams.name_like = searchValue;
+        }
+
+        const { data } = await api.get<Food[]>('/foods', {
+          params: queryParams,
+        });
+
+        setFoods(
+          data.map(food => ({
+            ...food,
+            formattedPrice: formatValue(food.price),
+          })),
+        );
+      } catch (err) {
+        Alert.alert(
+          'Problema de conexão',
+          'Aparentemente não conseguimos pegar os alimentos registrados, tente mais tarde!',
+        );
+      }
     }
 
     loadFoods();
@@ -67,15 +101,29 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     async function loadCategories(): Promise<void> {
-      // Load categories from API
+      try {
+        const { data } = await api.get<Category[]>('/categories');
+        setCategories(data);
+      } catch (err) {
+        Alert.alert(
+          'Problema de conexão',
+          'Aparentemente não conseguimos pegar as categorias registradas, tente mais tarde!',
+        );
+      }
     }
 
     loadCategories();
   }, []);
 
-  function handleSelectCategory(id: number): void {
-    // Select / deselect category
-  }
+  const handleSelectCategory = useCallback((id: number): void => {
+    setSelectedCategory((prevSelectedCategoryState: number | undefined) => {
+      if (prevSelectedCategoryState && prevSelectedCategoryState === id) {
+        setSelectedCategory(undefined);
+      } else {
+        setSelectedCategory(id);
+      }
+    });
+  }, []);
 
   return (
     <Container>
